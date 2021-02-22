@@ -1,5 +1,28 @@
 #!/bin/bash
 
+function add_user(){
+
+if [ `whoami` = "root" ];then  
+    echo "当前用户是root，需要创建一个普通用户"
+    read -p "输入普通用户名:"  username
+useradd -m -g users -G wheel -s /bin/bash $username
+passwd $username
+
+#判断用户是否存在
+if id -u $username >/dev/null 2>&1; then
+        echo "用户$username存在"
+else
+        echo "用户$username不存在"
+fi
+su $username
+
+else  
+    echo "not root user"  
+fi
+
+}
+
+
 function cleanup(){
   # shellcheck disable=SC2046
   rm -rf $(find . -name "build_*" -type d)
@@ -8,6 +31,9 @@ function cleanup(){
 function build_from_git(){
   build_dir="$(mktemp -d build_XXXX)"
   pushd "$build_dir" || exit
+
+  if [ ! -d "repo" ];then   mkdir repo; else   echo "文件夹已经存在，下一步"; fi
+
   git clone "$1" repo
   pushd repo || exit
   eval "$2"
@@ -63,16 +89,28 @@ done
 }
 
 function main(){
+  #切换到普通用户，这样才能安装aur工具
+  add_user
+
   # shellcheck disable=SC2046
   sudo pacman -Syu --needed $(cat ./pacman.deps)
-  # Install all fonts.
+
+  # 安装所有字体
+  #安装pacman的软件
   # shellcheck disable=SC2046
   pacman -Syu $(sudo pacman -Ssq "ttf-" | grep -Ev "nerd-fonts-symbols-mono|hanazono")
   build_libs_from_sources
+
+  #安装aur软件
   # shellcheck disable=SC2046
   pikaur -Syu --needed --noconfirm --noedit $(cat ./pikaur.deps)
+
+  #安装python
   install_python_deps
+
+  #复制dotfiles
   copy_dotfiles
+  
   update_repo
   echo "######## Installation complete ########"
   echo "Now you can build your desktop."
